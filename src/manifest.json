@@ -1,0 +1,31 @@
+{
+  "name": "Coin Market Cap Diamond Monitor",
+  "author": "TheCloakdOne",
+  "version": "0.0.1",
+  "description": "Diamond monitor for CoinMarketCap.com",
+  "content_scripts": [{
+    "run_at": "document_idle",
+    "matches": ["https://coinmarketcap.com/account/my-diamonds/"],
+    "js": ["content.js"]
+  }],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+  "browser_action": {
+    "default_icon": "diamond-icon.png",
+    "default_title": "Claim",
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "activeTab",
+    "background",
+    "storage"
+  ],
+  "manifest_version": 2,
+  "content_security_policy": "script-src 'self' https://www.coinmarketcap.com; object-src 'self'",
+  "web_accessible_resources": [
+    "*.js",
+    "*.css"
+  ]
+}
