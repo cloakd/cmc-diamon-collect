@@ -14,18 +14,25 @@
 
     function handleClaim(tab) {
         var text = tab.target.innerHTML;
-        if (text.indexOf("to collect 10 Diamonds")) {
-            var timeout = text.replace(" to collect 10 Diamonds", "");
-            console.log("Setting timeout", timeout);
+        if (text.indexOf("collect")) {
+            var tm = text.split(" ");
 
-            var split = timeout.split(":");
+            console.log("Setting timeout", tm);
+
+            var split = tm[0].split(":");
 
             var total = (split[0]*3600) + (split[1]*60) + (split[2]*1);
+            console.log("asd", {
+                1: split[0],
+                2: split[1],
+                3: split[2]
+            });
             console.log('Total Seconds: ', total);
 
             var redeemAt = Date.now() + (total*1000);
 
             chrome.storage.local.set({"cmc.diamond.timeout": redeemAt});
+            chrome.browserAction.setBadgeText({text: ''});
             return;
         }
         //TODO
