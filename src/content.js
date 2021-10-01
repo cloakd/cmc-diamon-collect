@@ -12,29 +12,24 @@
 
     function handleClaim(tab) {
         var text = tab.target.innerHTML;
-        var res = text.match(re);
-        console.log(res[0]);
 
-        if (text.indexOf("collect")) {
-            // var split = tm[0].split(":");
-            var split = res[0].split(":");
+        if (text === "Collect Diamonds") {
 
-            // var tm = text.split(" ");
-            console.log("Split", split);
-
-            var total = (split[0] * 3600) + (split[1] * 60) + (split[2] * 1);
-            console.log("asd", {
-                1: split[0],
-                2: split[1],
-                3: split[2]
-            });
-            console.log('Total Seconds: ', total);
-
-            var redeemAt = Date.now() + (total * 1000);
-
-            chrome.storage.sync.set({"cmc.diamond.timeout": redeemAt});
-            return;
+            chrome.storage.sync.set({"cmc.diamond.timeout": setCollectionTimeout("23:59:59")});
+            return
         }
-        //TODO
+
+        var res = text.match(re);
+        if (res.length > 0) {
+            console.log("Reg: ",res[0]);
+            chrome.storage.sync.set({"cmc.diamond.timeout": setCollectionTimeout(res[0])});
+        }
+    }
+
+    function setCollectionTimeout(t) {
+        var split = t.split(":");
+        var total = (split[0] * 3600) + (split[1] * 60) + (split[2] * 1);
+        var redeemAt = Date.now() + (total * 1000);
+        return redeemAt
     }
 })();

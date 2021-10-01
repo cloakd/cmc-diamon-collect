@@ -12,7 +12,7 @@ cid.addEventListener("click", () => {
 });
 
 function loadTimer() {
-    chrome.storage.local.get(["cmc.diamond.timeout"], function (data) {
+    chrome.storage.sync.get(["cmc.diamond.timeout"], function (data) {
         console.log("timeout loaded", data);
 
         var left = (data["cmc.diamond.timeout"] - Date.now()) / 1000;
