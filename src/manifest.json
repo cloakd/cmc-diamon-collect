@@ -1,29 +1,28 @@
 {
-  "name": "Coin Market Cap Diamond Monitor",
+  "name": "ME Interceptor",
   "author": "TheCloakdOne",
   "version": "0.0.1",
-  "description": "Diamond monitor for CoinMarketCap.com",
+  "description": "ME Interceptor",
   "content_scripts": [{
     "run_at": "document_idle",
-    "matches": ["https://coinmarketcap.com/account/my-diamonds/"],
+    "matches": ["https://magiceden.io/*"],
     "js": ["content.js"]
   }],
   "background": {
-    "scripts": ["background.js"],
+    "scripts": ["background_request.js"],
     "persistent": true
-  },
-  "browser_action": {
-    "default_icon": "diamond-icon.png",
-    "default_title": "Claim",
-    "default_popup": "popup.html"
   },
   "permissions": [
     "activeTab",
     "background",
-    "storage"
+    "storage",
+    "webRequest",
+    "webRequestBlocking",
+    "tabs",
+    "debugger",
+    "<all_urls>"
   ],
   "manifest_version": 2,
-  "content_security_policy": "script-src 'self' https://www.coinmarketcap.com; object-src 'self'",
   "web_accessible_resources": [
     "*.js",
     "*.css"
