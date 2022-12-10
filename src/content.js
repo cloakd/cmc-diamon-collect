@@ -57,6 +57,9 @@
 	}
 
 	function shouldClick() {
+		if (window.location.pathname.indexOf("item-details") === -1)
+			return false
+
 		return new URLSearchParams(window.location.search).get("c") !== "f"
 	}
 

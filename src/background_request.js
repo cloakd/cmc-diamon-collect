@@ -1,10 +1,17 @@
 class BackgroundRequest {
 	buyerAddress = "2PMP31sXqLKmtaR1oSW9pSMPj3aRQPNsyTurrK8Xguhc"
+
+	lastCompletedReqID = ""
+
 	activeRequest = null
+
+	dummyItem = "3xvtrYC12n244QVz8ymr41SNTnwQEpGPg9966BcSRt2c"
 
 	//Tab to use
 	tab
 
+	pollTime = 200
+	// pollTime = 400
 
 	constructor() {
 		chrome.runtime.onMessage.addListener((r,s,cb) => this.onMessage(r,s,cb))
@@ -15,12 +22,22 @@ class BackgroundRequest {
 		chrome.debugger.onEvent.addListener((d,m,p) => this.onEvent(d,m,p))
 
 
+		//Close phantom regularly
+		setInterval(this.closePhantom, 1000)
+
+		//Close any misc tabs
+		setInterval(() => {
+			this.closeOldTabs()
+		}, 20000)
+
 		this.requestMon = new RequestAPI((r) => this.onNewRequest(r))
 	}
 
 
 	onNewRequest(data) {
 		const lastReq = data.requests[data.requests.length-1]
+		if (lastReq.id === this.lastCompletedReqID)
+			return //Already done request
 
 		console.log("New Request: ", lastReq)
 		this.activeRequest = lastReq
@@ -37,11 +54,10 @@ class BackgroundRequest {
 
 	onTxnFound(data) {
 		console.log("TXN Found: ", data, this.activeRequest)
-
-		setTimeout(this.closePhantom, 1000)
 		if (!this.activeRequest)
 			return //No longer useful
 
+		this.lastCompletedReqID = this.activeRequest.id; //Set as last active
 		this.requestMon.sendResponse(this.activeRequest.id, data)
 		this.clearActiveRequest()
 	}
@@ -57,7 +73,7 @@ class BackgroundRequest {
 				return
 
 			this.requestMon.checkForRequest()
-		}, 200)
+		}, this.pollTime)
 	}
 
 	isScraping() {
@@ -71,7 +87,7 @@ class BackgroundRequest {
 	async createBaseTab() {
 		chrome.tabs.create({
 			active: true,
-			url: `https://magiceden.io/item-details/3kSKWCMYZTCEBHTjTh1rNrNbXY7jE9dv4uTVQESMNV2X?c=f`, //AB Land (worst case we buy it)
+			url: `https://magiceden.io/item-details/${this.dummyItem}?c=f`, //AB Land (worst case we buy it)
 		}, (tab) => {
 			console.log("Using new tab", tab)
 			this._onCreate(tab)
@@ -132,6 +148,7 @@ class BackgroundRequest {
 	onMessage(request, sender, sendResponse) {
 		if (request.failed) {
 			console.log("Failed to get TXN Data")
+			window.location.reload()
 			// chrome.tabs.remove(sender.tab.id)
 		}
 		sendResponse()
@@ -219,20 +236,49 @@ class BackgroundRequest {
 	 * Closes all open phantom windows
 	 */
 	closePhantom() {
-		console.log("Closing phantom wallets")
 		chrome.tabs.query({
 			title: "Phantom Wallet",
 			discarded: false,
+			status: "complete"
+		}, (tabs) => {
+			if (tabs.length > 0)
+				console.log("Closing phantom wallets")
+
+			for (let i = 0; i < tabs.length; i++) {
+				console.log("Closing phantom:", tabs[i])
+				chrome.windows.remove(tabs[i].windowId)
+			}
+		})
+	}
+
+	/**
+	 * Closes all tabs not needed
+	 */
+	closeOldTabs() {
+		if (!this.tab)
+			return
+
+		console.log("Closing old tabs", this.tab)
+		chrome.tabs.query({
+			url: "https://magiceden.io/item-details/*"
 		}, (tabs) => {
 			for (let i = 0; i < tabs.length; i++) {
-				console.log("Closing phantom:", tabs[i].windowId)
-				chrome.windows.remove(tabs[i].windowId)
+				if (tabs[i].id === this.tab.id)
+					continue
+				console.log("T", tabs[i])
+
+				try {
+					chrome.tabs.remove(tabs[i].id)
+				} catch (e) {}
 			}
 		})
 	}
 }
 
 class RequestAPI {
+
+	baseURI = "http://localhost:8090"
+	// baseURI = "https://mkt-resp.agg.alphabatem.com"
 
 	onRequests = (r) => {
 	}
@@ -243,7 +289,7 @@ class RequestAPI {
 
 	checkForRequest() {
 		try {
-			fetch("http://localhost:8090/requests").catch(e => {
+			fetch(`${this.baseURI}/requests`).catch(e => {
 				//
 			}).then((r) => this.onRequestData(r))
 		} catch (e) {
@@ -276,7 +322,7 @@ class RequestAPI {
 		const js = JSON.parse(data.body)
 		console.log("sendResponse:2", js)
 
-		fetch("http://localhost:8090/response", {
+		fetch(`${this.baseURI}/response`, {
 			method: "POST",
 			headers: {
 				'Accept': 'application/json',
