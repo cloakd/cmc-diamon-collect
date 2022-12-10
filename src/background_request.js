@@ -11,35 +11,48 @@ class BackgroundRequest {
 	tab
 
 	pollTime = 200
+
 	// pollTime = 400
 
 	constructor() {
-		chrome.runtime.onMessage.addListener((r,s,cb) => this.onMessage(r,s,cb))
+		chrome.runtime.onMessage.addListener((r, s, cb) => this.onMessage(r, s, cb))
 		chrome.webRequest.onBeforeRequest.addListener((d) => this.onBeforeRequest(d), {urls: ["https://*.magiceden.io/*"]}, ["blocking"])
 		chrome.webRequest.onBeforeRequest.addListener((d) => this.onBeforeRequestMediaBlock(d), {urls: ["https://nftstorage.link/*", "https://img-cdn.magiceden.dev/*", "https://*.arweave.net/*", "https://*.ipfs.nftstorage.link/*", "https://ipfs.io/*"]}, ["blocking"])
 
 		//Listen on returning message
-		chrome.debugger.onEvent.addListener((d,m,p) => this.onEvent(d,m,p))
+		chrome.debugger.onEvent.addListener((d, m, p) => this.onEvent(d, m, p))
 
 
 		//Close phantom regularly
 		setInterval(this.closePhantom, 1000)
+		setInterval(this.closeSolflare, 1000)
 
 		//Close any misc tabs
 		setInterval(() => {
 			this.closeOldTabs()
 		}, 20000)
 
+
+		//Reload extension every 10 mins just incase
+		setInterval(() => {
+			try {
+				chrome.runtime.reload()
+			} catch (e) {
+				console.log("unable to reload")
+			}
+		}, 60000 * 10)
+
 		this.requestMon = new RequestAPI((r) => this.onNewRequest(r))
 	}
 
 
 	onNewRequest(data) {
-		const lastReq = data.requests[data.requests.length-1]
+		const lastReq = data.requests[data.requests.length - 1]
 		if (lastReq.id === this.lastCompletedReqID)
-			return //Already done request
+			return true //Already done request
 
 		console.log("New Request: ", lastReq)
+		// console.log("Sending to Tab:", this.tab.id)
 		this.activeRequest = lastReq
 		this.sendClickCommand()
 
@@ -49,25 +62,37 @@ class BackgroundRequest {
 
 			this.clearActiveRequest()
 		}, 10000)
+
+		return true;
 	}
 
 
 	onTxnFound(data) {
-		console.log("TXN Found: ", data, this.activeRequest)
+		// console.log("TXN Found: ", data, this.activeRequest)
 		if (!this.activeRequest)
-			return //No longer useful
+			return true //No longer useful
 
 		this.lastCompletedReqID = this.activeRequest.id; //Set as last active
 		this.requestMon.sendResponse(this.activeRequest.id, data)
 		this.clearActiveRequest()
+
+		return true;
 	}
 
 	Run() {
 		//Create base tab to use (we use a low value ABTM item as our placeholder item)
 		this.createBaseTab()
 
-		//Start polling for requests
+		//Give it time to load
+		setTimeout(() => {
+			this.pollNewRequests()
+		}, 10000)
 
+		//Start polling for requests
+		// this.pollNewRequests()
+	}
+
+	pollNewRequests() {
 		setInterval(() => {
 			if (this.isScraping())
 				return
@@ -84,7 +109,7 @@ class BackgroundRequest {
 		this.activeRequest = null
 	}
 
-	async createBaseTab() {
+	createBaseTab() {
 		chrome.tabs.create({
 			active: true,
 			url: `https://magiceden.io/item-details/${this.dummyItem}?c=f`, //AB Land (worst case we buy it)
@@ -96,18 +121,18 @@ class BackgroundRequest {
 
 	_onCreate(tab) {
 		this.tab = tab
-		console.log("Tab created", tab)
 		chrome.debugger.attach({ //debug at current tab
 			tabId: this.tab.id
 		}, "1.0", () => this._onAttach());
+		console.log("Tab created", tab)
 	}
 
 
 	_onAttach() {
-		console.log("Tab attached", this.tab)
 		chrome.debugger.sendCommand({ //first enable the Network
 			tabId: this.tab.id
 		}, "Network.enable");
+		console.log("Tab attached", this.tab)
 	}
 
 	/**
@@ -125,18 +150,24 @@ class BackgroundRequest {
 			return;
 
 		//response return
-		console.log(debuggeeId, {
-			msg: message,
-			params: params
-		})
+		// console.log(`onEvent ${debuggeeId}`, {
+		// 	msg: message,
+		// 	params: params
+		// })
 
-		chrome.debugger.sendCommand({
-			tabId: debuggeeId.tabId
-		}, "Network.getResponseBody", {
-			"requestId": params.requestId
-		}, (response) => {
-			this.onTxnFound(response)
-		});
+		try {
+			chrome.debugger.sendCommand({
+				tabId: debuggeeId.tabId
+			}, "Network.getResponseBody", {
+				"requestId": params.requestId
+			}, (response) => {
+				this.onTxnFound(response)
+			});
+		} catch (e) {
+			//
+		}
+
+		return true;
 	}
 
 	/**
@@ -152,8 +183,9 @@ class BackgroundRequest {
 			// chrome.tabs.remove(sender.tab.id)
 		}
 		sendResponse()
-	}
 
+		return true;
+	}
 
 	/**
 	 * Block Media Queries
@@ -225,9 +257,10 @@ class BackgroundRequest {
 		try {
 			chrome.tabs.sendMessage(this.tab.id, {trigger_buy_now: true}, () => {
 				//
+				return true
 			});
 		} catch (e) {
-
+			console.log("Unable to send click command", e)
 		}
 
 	}
@@ -242,12 +275,31 @@ class BackgroundRequest {
 			status: "complete"
 		}, (tabs) => {
 			if (tabs.length > 0)
-				console.log("Closing phantom wallets")
+				// console.log("Closing phantom wallets")
 
-			for (let i = 0; i < tabs.length; i++) {
-				console.log("Closing phantom:", tabs[i])
-				chrome.windows.remove(tabs[i].windowId)
-			}
+				for (let i = 0; i < tabs.length; i++) {
+					// console.log("Closing Solflare:", tabs[i])
+					chrome.windows.remove(tabs[i].windowId)
+				}
+		})
+	}
+
+	/**
+	 * Closes all open solflare windows
+	 */
+	closeSolflare() {
+		chrome.tabs.query({
+			title: "Solflare",
+			discarded: false,
+			status: "complete"
+		}, (tabs) => {
+			if (tabs.length > 0)
+				// console.log("Closing solflare wallets")
+
+				for (let i = 0; i < tabs.length; i++) {
+					// console.log("Closing phantom:", tabs[i])
+					chrome.windows.remove(tabs[i].windowId)
+				}
 		})
 	}
 
@@ -258,18 +310,16 @@ class BackgroundRequest {
 		if (!this.tab)
 			return
 
-		console.log("Closing old tabs", this.tab)
 		chrome.tabs.query({
 			url: "https://magiceden.io/item-details/*"
 		}, (tabs) => {
 			for (let i = 0; i < tabs.length; i++) {
 				if (tabs[i].id === this.tab.id)
 					continue
-				console.log("T", tabs[i])
-
 				try {
 					chrome.tabs.remove(tabs[i].id)
-				} catch (e) {}
+				} catch (e) {
+				}
 			}
 		})
 	}
@@ -277,8 +327,8 @@ class BackgroundRequest {
 
 class RequestAPI {
 
-	baseURI = "http://localhost:8090"
-	// baseURI = "https://mkt-resp.agg.alphabatem.com"
+	// baseURI = "http://localhost:8090"
+	baseURI = "https://mkt-resp.agg.alphabatem.com"
 
 	onRequests = (r) => {
 	}

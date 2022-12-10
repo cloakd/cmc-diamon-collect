@@ -8,6 +8,7 @@
 			checkRoyaltySetting()
 			clickBuyButton()
 			sendResponse()
+			return true
 		}
 	);
 
@@ -69,7 +70,7 @@
 
 function checkRoyaltySetting() {
 	let pctData = JSON.parse(localStorage.getItem("royaltyPercentage"))
-	if (pctData.value === 0)
+	if (!pctData || pctData.value === 0)
 		return
 
 	console.error("Invalid royalties, resetting", pctData)
