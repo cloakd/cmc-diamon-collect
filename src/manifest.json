@@ -3,28 +3,47 @@
   "author": "TheCloakdOne",
   "version": "0.0.1",
   "description": "ME Interceptor",
-  "content_scripts": [{
-    "run_at": "document_idle",
-    "matches": ["https://magiceden.io/*"],
-    "js": ["content.js"]
-  }],
+  "content_scripts": [
+	{
+	  "run_at": "document_idle",
+	  "matches": [
+		"https://magiceden.io/*"
+	  ],
+	  "js": [
+		"content.js"
+	  ],
+	  "all_frames": true
+	},
+	{
+	  "run_at": "document_start",
+	  "matches": [
+		"https://magiceden.io/*"
+	  ],
+	  "js": [
+		"remote_wallet.js"
+	  ],
+	  "all_frames": true
+	}
+  ],
   "background": {
-    "scripts": ["background_request.js"],
-    "persistent": true
+	"scripts": [
+	  "background_request.js"
+	],
+	"persistent": true
   },
   "permissions": [
-    "activeTab",
-    "background",
-    "storage",
-    "webRequest",
-    "webRequestBlocking",
-    "tabs",
-    "debugger",
-    "<all_urls>"
+	"activeTab",
+	"background",
+	"storage",
+	"webRequest",
+	"webRequestBlocking",
+	"tabs",
+	"debugger",
+	"<all_urls>"
   ],
   "manifest_version": 2,
   "web_accessible_resources": [
-    "*.js",
-    "*.css"
+	"*.js",
+	"*.css"
   ]
 }

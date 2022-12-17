@@ -5,19 +5,26 @@ class BackgroundRequest {
 
 	activeRequest = null
 
-	dummyItem = "3xvtrYC12n244QVz8ymr41SNTnwQEpGPg9966BcSRt2c"
+	dummyItem = "EiKqyAm9EaXtPA3A61bwEZbo5kgcu9rduhhmBoVZCN6W"
 
 	//Tab to use
 	tab
 
-	pollTime = 200
+	pollTime = 400
+	// pollTime = 2000
 
-	// pollTime = 400
+	baseURI = "http://localhost:8090"
+	// baseURI = "https://mkt-resp.agg.alphabatem.com"
+
+	arkose = new ArkoseSolver()
+
 
 	constructor() {
 		chrome.runtime.onMessage.addListener((r, s, cb) => this.onMessage(r, s, cb))
 		chrome.webRequest.onBeforeRequest.addListener((d) => this.onBeforeRequest(d), {urls: ["https://*.magiceden.io/*"]}, ["blocking"])
-		chrome.webRequest.onBeforeRequest.addListener((d) => this.onBeforeRequestMediaBlock(d), {urls: ["https://nftstorage.link/*", "https://img-cdn.magiceden.dev/*", "https://*.arweave.net/*", "https://*.ipfs.nftstorage.link/*", "https://ipfs.io/*"]}, ["blocking"])
+		chrome.webRequest.onBeforeSendHeaders.addListener((d) => this.onBeforeHeaders(d), {urls: ["https://*.magiceden.io/*"]}, ["blocking", "requestHeaders", "extraHeaders"])
+		chrome.webRequest.onBeforeRequest.addListener((d) => this.onBeforeArkoseRequest(d), {urls: ["https://*.arkoselabs.com/*"]}, ["blocking"])
+		chrome.webRequest.onBeforeRequest.addListener((d) => this.onBeforeRequestMediaBlock(d), {urls: ["https://nftstorage.link/*", "https://img-cdn.magiceden.dev/*", "https://*.arweave.net/*", "https://*.ipfs.nftstorage.link/*", "https://ipfs.io/*", "https://shdw-drive.genesysgo.net/*", "https://img-cdn.magiceden.dev/*"]}, ["blocking"])
 
 		//Listen on returning message
 		chrome.debugger.onEvent.addListener((d, m, p) => this.onEvent(d, m, p))
@@ -32,17 +39,7 @@ class BackgroundRequest {
 			this.closeOldTabs()
 		}, 20000)
 
-
-		//Reload extension every 10 mins just incase
-		setInterval(() => {
-			try {
-				chrome.runtime.reload()
-			} catch (e) {
-				console.log("unable to reload")
-			}
-		}, 60000 * 10)
-
-		this.requestMon = new RequestAPI((r) => this.onNewRequest(r))
+		this.requestMon = new RequestAPI(this.baseURI, (r) => this.onNewRequest(r))
 	}
 
 
@@ -54,26 +51,30 @@ class BackgroundRequest {
 		console.log("New Request: ", lastReq)
 		// console.log("Sending to Tab:", this.tab.id)
 		this.activeRequest = lastReq
-		this.sendClickCommand()
+
+		if (this.baseURI.indexOf("localhost") > 0)
+			this.sendClickBuyNowCommand()
+		else
+			this.sendLoginCommand() //Login as user and obtain message to sign
 
 		setTimeout(() => {
 			if (!this.activeRequest || this.activeRequest.id !== lastReq.id)
 				return
 
 			this.clearActiveRequest()
-		}, 10000)
+		}, 40000)
 
 		return true;
 	}
 
-
 	onTxnFound(data) {
-		// console.log("TXN Found: ", data, this.activeRequest)
+		console.log("TXN Found: ", data, this.activeRequest)
 		if (!this.activeRequest)
 			return true //No longer useful
 
 		this.lastCompletedReqID = this.activeRequest.id; //Set as last active
 		this.requestMon.sendResponse(this.activeRequest.id, data)
+
 		this.clearActiveRequest()
 
 		return true;
@@ -150,22 +151,27 @@ class BackgroundRequest {
 			return;
 
 		//response return
-		// console.log(`onEvent ${debuggeeId}`, {
-		// 	msg: message,
-		// 	params: params
-		// })
+		console.log(`onEvent`, {
+			debuggeeId: debuggeeId,
+			msg: message,
+			params: params
+		})
 
-		try {
-			chrome.debugger.sendCommand({
-				tabId: debuggeeId.tabId
-			}, "Network.getResponseBody", {
-				"requestId": params.requestId
-			}, (response) => {
-				this.onTxnFound(response)
-			});
-		} catch (e) {
-			//
-		}
+
+		setTimeout(() => {
+			try {
+				chrome.debugger.sendCommand({
+					tabId: debuggeeId.tabId
+				}, "Network.getResponseBody", {
+					"requestId": params.requestId
+				}, (response) => {
+					if (params.response.url.indexOf("buy_now") > -1)
+						this.onTxnFound(response)
+				});
+			} catch (e) {
+				console.log("Unable to get response!")
+			}
+		}, 600)
 
 		return true;
 	}
@@ -177,9 +183,39 @@ class BackgroundRequest {
 	 * @param sendResponse
 	 */
 	onMessage(request, sender, sendResponse) {
+		if (!this.activeRequest) {
+			sendResponse()
+			return true
+		}
+
+		console.log("New Message", request)
+
+		if (request.method === "signMessage") {
+
+			this.requestMon.sendSignatureExchange(this.activeRequest.id, request.data).then((r) => {
+				console.log("SigExchanfge raw", r)
+				r.json().then(j => {
+					console.log("Signature exchange response", j)
+					sendResponse(j.signature)
+				}).then(() => {
+					setTimeout(() => {
+						console.log("Sending click buy now")
+						this.sendClickBuyNowCommand()
+					}, 1000)
+				})
+			})
+
+			return true //Needs to wait on sendResponse
+		}
+
+		if (request.type === "captcha") {
+			this.arkose.solve()
+			return true
+		}
+
 		if (request.failed) {
 			console.log("Failed to get TXN Data")
-			window.location.reload()
+			// window.location.reload()
 			// chrome.tabs.remove(sender.tab.id)
 		}
 		sendResponse()
@@ -232,6 +268,34 @@ class BackgroundRequest {
 		return {redirectUrl: uri}
 	}
 
+	onBeforeHeaders(details) {
+		if (details.url.indexOf("buy_now") === -1) {
+			return {requestHeaders: details.requestHeaders} //Continue
+		}
+
+		if (this.activeRequest && this.activeRequest.sessionToken)
+			details.requestHeaders.push({
+				name: "x-browser-session",
+				value: this.activeRequest.sessionToken,
+			})
+
+
+		return {requestHeaders: details.requestHeaders};
+	}
+
+	onBeforeArkoseRequest(details) {
+
+		if (details.url.indexOf("sessionToken") !== -1) {
+			//Arkose challenge image
+			this.arkose.onChallengeImage(details.url)
+		}
+
+
+		if (details.url.indexOf("fc") !== -1) {
+			//Arkose details urls
+		}
+	}
+
 
 	/**
 	 * Intercept our request
@@ -253,16 +317,35 @@ class BackgroundRequest {
 	/**
 	 * Send click request to content script to trigger Phantom flow
 	 */
-	sendClickCommand() {
+	sendClickBuyNowCommand() {
 		try {
-			chrome.tabs.sendMessage(this.tab.id, {trigger_buy_now: true}, () => {
+			chrome.tabs.sendMessage(this.tab.id, {
+				type: "buy_now",
+				data: this.activeRequest,
+			}, () => {
 				//
 				return true
 			});
 		} catch (e) {
 			console.log("Unable to send click command", e)
 		}
+	}
 
+	/**
+	 * Send click request to content script to trigger login flow
+	 */
+	sendLoginCommand() {
+		try {
+			chrome.tabs.sendMessage(this.tab.id, {
+				type: "login",
+				data: this.activeRequest,
+			}, () => {
+				//
+				return true
+			});
+		} catch (e) {
+			console.log("Unable to send login command", e)
+		}
 	}
 
 	/**
@@ -327,19 +410,19 @@ class BackgroundRequest {
 
 class RequestAPI {
 
-	// baseURI = "http://localhost:8090"
-	baseURI = "https://mkt-resp.agg.alphabatem.com"
+	baseURI
 
 	onRequests = (r) => {
 	}
 
-	constructor(onRequests) {
+	constructor(baseURI, onRequests) {
+		this.baseURI = baseURI
 		this.onRequests = onRequests
 	}
 
 	checkForRequest() {
 		try {
-			fetch(`${this.baseURI}/requests`).catch(e => {
+			fetch(`${this.baseURI}/requests/next`).catch(e => {
 				//
 			}).then((r) => this.onRequestData(r))
 		} catch (e) {
@@ -386,6 +469,111 @@ class RequestAPI {
 			//
 		})
 	}
+
+	sendSignatureExchange(requestID, data) {
+		console.log(`${requestID} sendSignatureExchange`, data)
+
+		// const js = JSON.parse(data.body)
+
+		return fetch(`${this.baseURI}/signature_exchange`, {
+			method: "POST",
+			headers: {
+				'Accept': 'application/json',
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				requestId: requestID,
+				data: window.btoa(data)
+			})
+		}).catch(e => {
+			//
+		})
+	}
 }
+
+//IP Rotation
+class ProxyRotation {
+	constructor() {
+	}
+
+}
+
+//Randomly hop around listings we can afford
+class PageManager {
+	constructor() {
+	}
+
+	newListingPage() {
+		return ""
+	}
+}
+
+class ArkoseSolver {
+	basePath = "http://localhost:8999"
+	solverBasePath = "https://mkt.agg.alphabatem.com"
+
+	//Should do this recursively until the challenge is completed
+	solve() {
+		console.log("Attempting to solve arkose challenge")
+		this.clickStartButton()
+		//Once we have handed over to the click workflow we pretty much just wait for it to complete
+		//TODO Poll for failure message on vision side
+		//TODO Poll for completion to continue with content workflow?
+	}
+
+
+	clickStartButton() {
+		return fetch(`${this.basePath}/puzzle/start`)
+	}
+
+	clickRestartButton() {
+		return fetch(`${this.basePath}/puzzle/start`)
+	}
+
+	checkPuzzleError() {
+		return fetch(`${this.basePath}/puzzle/err_check`)
+	}
+
+	clickOptionButton(answer) {
+		if (answer === -1) {
+			console.log("Unable to get correct answer, guessing")
+			answer = Math.floor(Math.random() * 5);
+		}
+
+
+		setTimeout(() => this.checkPuzzleError(), 2000) //Check for an error after
+		return fetch(`${this.basePath}/puzzle/option`, {
+			method: "POST",
+			headers: {
+				'Accept': 'application/json',
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				answer: answer,
+			})
+		})
+	}
+
+	onChallengeImage(uri) {
+		return fetch(`${this.solverBasePath}/captcha/funcaptcha/solve`, {
+			method: "POST",
+			headers: {
+				'Accept': 'application/json',
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				image_url: uri,
+			})
+		}).then(r => {
+			r.json().then((data) => {
+				console.log("Challenge answer:", data)
+				setTimeout(() => {
+					this.clickOptionButton(data.answer)
+				}, 800) //Give it some time to load
+			})
+		})
+	}
+}
+
 
 new BackgroundRequest().Run()
