@@ -13,7 +13,6 @@ class RemoteSolanaWallet {
 
 	constructor() {
 		window.addEventListener("message", (e) => {
-			console.log("remote_wallet onmsg: ", e.data)
 			this.onMessage(e)
 		})
 	}
@@ -21,6 +20,8 @@ class RemoteSolanaWallet {
 	onMessage(e) {
 		if (!e.data.type)
 			return
+
+		console.log("remote_wallet onmsg: ", e.data)
 
 		if (e.data.type === "change_wallet") {
 			console.log("remote_wallet::onMessage - message", e.data)
@@ -112,6 +113,7 @@ class RemoteSolanaWallet {
 
 
 	msgCount = 0
+
 	signMessage(t) {
 		if (!this.connected() || !this.publicKey) {
 			console.log("SKIP FAKER signMessage")

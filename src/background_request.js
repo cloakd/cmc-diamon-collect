@@ -5,16 +5,19 @@ class BackgroundRequest {
 
 	activeRequest = null
 
+	//Buffer for running bulk purchases
+	bulkRequests = []
+
 	dummyItem = "EiKqyAm9EaXtPA3A61bwEZbo5kgcu9rduhhmBoVZCN6W"
 
 	//Tab to use
 	tab
 
-	pollTime = 400
-	// pollTime = 2000
+	// pollTime = 400
+	pollTime = 1000
 
-	baseURI = "http://localhost:8090"
-	// baseURI = "https://mkt-resp.agg.alphabatem.com"
+	// baseURI = "http://localhost:8090"
+	baseURI = "https://mkt-resp.agg.alphabatem.com"
 
 	arkose = new ArkoseSolver()
 
@@ -45,8 +48,10 @@ class BackgroundRequest {
 
 	onNewRequest(data) {
 		const lastReq = data.requests[data.requests.length - 1]
-		if (lastReq.id === this.lastCompletedReqID)
+		if (lastReq.id === this.lastCompletedReqID) {
+			console.log("Skipping old Request: ", lastReq)
 			return true //Already done request
+		}
 
 		console.log("New Request: ", lastReq)
 		// console.log("Sending to Tab:", this.tab.id)
@@ -72,8 +77,22 @@ class BackgroundRequest {
 		if (!this.activeRequest)
 			return true //No longer useful
 
+		//We have all our requests
+		if (this.activeRequest.is_bulk && this.bulkRequests.length !== this.activeRequest.requests.length) {
+			this.bulkRequests.push(data)
+			return true
+		}
+
 		this.lastCompletedReqID = this.activeRequest.id; //Set as last active
-		this.requestMon.sendResponse(this.activeRequest.id, data)
+		try {
+
+			if (this.activeRequest.is_bulk)
+				this.requestMon.sendBulkResponse(this.activeRequest.id, this.bulkRequests)
+				else
+			this.requestMon.sendResponse(this.activeRequest.id, data)
+		} catch (e) {
+			console.error("Unable to send txn response", e)
+		}
 
 		this.clearActiveRequest()
 
@@ -107,7 +126,13 @@ class BackgroundRequest {
 	}
 
 	clearActiveRequest() {
+		if (!this.activeRequest.is_bulk) {
+			console.log("Sending logout command")
+			this.sendLogoutCommand()
+		}
+
 		this.activeRequest = null
+		this.bulkRequests = []
 	}
 
 	createBaseTab() {
@@ -193,7 +218,7 @@ class BackgroundRequest {
 		if (request.method === "signMessage") {
 
 			this.requestMon.sendSignatureExchange(this.activeRequest.id, request.data).then((r) => {
-				console.log("SigExchanfge raw", r)
+				console.log("SigExchange raw", r)
 				r.json().then(j => {
 					console.log("Signature exchange response", j)
 					sendResponse(j.signature)
@@ -349,6 +374,22 @@ class BackgroundRequest {
 	}
 
 	/**
+	 * Send click request to content script to trigger logout flow
+	 */
+	sendLogoutCommand() {
+		try {
+			chrome.tabs.sendMessage(this.tab.id, {
+				type: "logout",
+			}, () => {
+				//
+				return true
+			});
+		} catch (e) {
+			console.log("Unable to send logout command", e)
+		}
+	}
+
+	/**
 	 * Closes all open phantom windows
 	 */
 	closePhantom() {
@@ -442,9 +483,43 @@ class RequestAPI {
 	}
 
 	/**
-	 * Send response back to server
+	 * Send bulk response back to server
 	 * @param requestID
 	 * @param data
+	 */
+	sendBulkResponse(requestID, data) {
+		if (!data) {
+			console.log("sendResponse: No data received")
+			return
+		}
+
+		const payload = [];
+		for (let i = 0; i < data.length;i++) {
+			const js = JSON.parse(data.body)
+			payload.push(js.txSigned)
+		}
+
+		console.log("sendResponseBulk:2", payload)
+
+		return fetch(`${this.baseURI}/response`, {
+			method: "POST",
+			headers: {
+				'Accept': 'application/json',
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				id: requestID,
+				data: payload
+			})
+		}).catch(e => {
+			//
+		})
+	}
+
+	/**
+	 * Send response back to server
+	 * @param requestID
+	 * @param data []Requests
 	 */
 	sendResponse(requestID, data) {
 		if (!data) {
@@ -455,7 +530,7 @@ class RequestAPI {
 		const js = JSON.parse(data.body)
 		console.log("sendResponse:2", js)
 
-		fetch(`${this.baseURI}/response`, {
+		return fetch(`${this.baseURI}/response`, {
 			method: "POST",
 			headers: {
 				'Accept': 'application/json',

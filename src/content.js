@@ -41,6 +41,10 @@
 				checkRoyaltySetting()
 				clickBuyButton()
 				break
+			case "logout":
+				clickSignOutButton()
+				window.location.reload()
+				break
 			case "login":
 				//Sign out of any old account
 				clickSignOutButton()
@@ -125,6 +129,7 @@
 		let btn = _findButton("connect wallet")
 
 		if (btn !== null) {
+			console.log("Clicking connect wallet")
 			btn.click()
 		} else {
 			attempts = 0
@@ -190,6 +195,7 @@
 		let btn = _findImage("Phantom icon", 28, 28)
 
 		if (btn !== null) {
+			console.log("Clicking Phantom Wallet button")
 			btn.click()
 		} else {
 			attempts = 0
@@ -233,6 +239,7 @@
 		if (btn === null) {
 			setTimeout(clickBuyButton, 400)
 		} else {
+			console.log("Clicking button")
 			btn.click()
 		}
 	}
