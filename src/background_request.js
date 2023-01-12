@@ -8,16 +8,16 @@ class BackgroundRequest {
 	//Buffer for running bulk purchases
 	bulkRequests = []
 
-	dummyItem = "EiKqyAm9EaXtPA3A61bwEZbo5kgcu9rduhhmBoVZCN6W"
+	dummyItem = "73QmEVb51bsZTuL7Leq24d5NQbUeEw38w3Ca417fuR82"
 
 	//Tab to use
 	tab
 
-	// pollTime = 400
-	pollTime = 1000
+	pollTime = 400
+	// pollTime = 1000
 
-	// baseURI = "http://localhost:8090"
-	baseURI = "https://mkt-resp.agg.alphabatem.com"
+	baseURI = "http://localhost:8090"
+	// baseURI = "https://mkt-resp.agg.alphabatem.com"
 
 	arkose = new ArkoseSolver()
 
@@ -86,10 +86,11 @@ class BackgroundRequest {
 		this.lastCompletedReqID = this.activeRequest.id; //Set as last active
 		try {
 
-			if (this.activeRequest.is_bulk)
+			if (this.activeRequest.is_bulk) {
 				this.requestMon.sendBulkResponse(this.activeRequest.id, this.bulkRequests)
-				else
-			this.requestMon.sendResponse(this.activeRequest.id, data)
+			} else {
+				this.requestMon.sendResponse(this.activeRequest.id, data)
+			}
 		} catch (e) {
 			console.error("Unable to send txn response", e)
 		}
@@ -106,19 +107,32 @@ class BackgroundRequest {
 		//Give it time to load
 		setTimeout(() => {
 			this.pollNewRequests()
-		}, 10000)
+		}, 3000)
 
 		//Start polling for requests
 		// this.pollNewRequests()
 	}
 
-	pollNewRequests() {
-		setInterval(() => {
+	async pollNewRequests() {
+		console.log("Polling for requests")
+		while (true) {
 			if (this.isScraping())
 				return
 
-			this.requestMon.checkForRequest()
-		}, this.pollTime)
+			await this.requestMon.checkForRequest()
+			await this.sleep(this.pollTime)
+		}
+
+		// setInterval(() => {
+		// 	if (this.isScraping())
+		// 		return
+		//
+		// 	this.requestMon.checkForRequest()
+		// }, this.pollTime)
+	}
+
+	sleep(ms) {
+		return new Promise(resolve => setTimeout(resolve, ms));
 	}
 
 	isScraping() {
@@ -126,7 +140,7 @@ class BackgroundRequest {
 	}
 
 	clearActiveRequest() {
-		if (!this.activeRequest.is_bulk) {
+		if (!this.activeRequest.is_bulk && this.baseURI.indexOf("localhost") === -1) {
 			console.log("Sending logout command")
 			this.sendLogoutCommand()
 		}
@@ -463,7 +477,7 @@ class RequestAPI {
 
 	checkForRequest() {
 		try {
-			fetch(`${this.baseURI}/requests/next`).catch(e => {
+			return fetch(`${this.baseURI}/requests/next`).catch(e => {
 				//
 			}).then((r) => this.onRequestData(r))
 		} catch (e) {
@@ -494,7 +508,7 @@ class RequestAPI {
 		}
 
 		const payload = [];
-		for (let i = 0; i < data.length;i++) {
+		for (let i = 0; i < data.length; i++) {
 			const js = JSON.parse(data.body)
 			payload.push(js.txSigned)
 		}
@@ -538,7 +552,8 @@ class RequestAPI {
 			},
 			body: JSON.stringify({
 				id: requestID,
-				data: js.txSigned
+				data: js.txSigned,
+				data_raw: data.body
 			})
 		}).catch(e => {
 			//
