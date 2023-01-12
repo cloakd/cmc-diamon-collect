@@ -116,10 +116,9 @@ class BackgroundRequest {
 	async pollNewRequests() {
 		console.log("Polling for requests")
 		while (true) {
-			if (this.isScraping())
-				return
+			if (!this.isScraping())
+				await this.requestMon.checkForRequest()
 
-			await this.requestMon.checkForRequest()
 			await this.sleep(this.pollTime)
 		}
 
