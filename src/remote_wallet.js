@@ -62,10 +62,20 @@ class RemoteSolanaWallet {
 		return this.publicKey
 	}
 
+	waitConnected(cb) {
+		const t = setTimeout(() => {
+			if (!this.connected())
+				return
+
+			clearTimeout(t)
+			cb()
+		}, 1000)
+	}
+
 	connect() {
 		return new Promise((ok, err) => {
 			if (!this.publicKey) {
-				ok()
+				this.waitConnected(ok)
 				return
 			}
 
@@ -117,13 +127,14 @@ class RemoteSolanaWallet {
 	signMessage(t) {
 		if (!this.connected() || !this.publicKey) {
 			console.log("SKIP FAKER signMessage")
-			return
+			return new Promise((o, e) => e())
 		}
 
-		if (this.msgCount !== 1) {
-			this.msgCount++
-			return
-		}
+		// if (this.msgCount !== 1) {
+		// 	console.log("SKIP FAKER signMessage", this.msgCount)
+		// 	this.msgCount++
+		// 	return new Promise((o, e) => e())
+		// }
 
 		const smsg = new TextDecoder().decode(t)
 		console.log("FAKER signMessage", smsg)

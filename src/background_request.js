@@ -8,7 +8,7 @@ class BackgroundRequest {
 	//Buffer for running bulk purchases
 	bulkRequests = []
 
-	dummyItem = "73QmEVb51bsZTuL7Leq24d5NQbUeEw38w3Ca417fuR82"
+	dummyItem = "8qnJ1MiwbXsWuBHJsV2NoFyATBjcnwCe5DMaUcWis1yu"
 
 	//Tab to use
 	tab
@@ -16,8 +16,8 @@ class BackgroundRequest {
 	pollTime = 400
 	// pollTime = 1000
 
-	baseURI = "http://localhost:8090"
-	// baseURI = "https://mkt-resp.agg.alphabatem.com"
+	// baseURI = "http://localhost:8090"
+	baseURI = "https://mkt-resp.agg.alphabatem.com"
 
 	arkose = new ArkoseSolver()
 

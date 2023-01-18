@@ -164,6 +164,7 @@
 			console.log("Clicking Sign out")
 			btn.click()
 			localStorage.clear()
+			localStorage.configureWalletEnvironment()
 		} else {
 			attempts = 0
 		}
