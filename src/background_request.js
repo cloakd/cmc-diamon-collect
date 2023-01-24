@@ -20,8 +20,8 @@ class BackgroundRequest {
 	pollTime = 400
 	// pollTime = 1000
 
-	baseURI = "http://localhost:8090"
-	// baseURI = "https://mkt-resp.agg.alphabatem.com"
+	// baseURI = "http://localhost:8090"
+	baseURI = "https://mkt-resp.agg.alphabatem.com"
 
 	arkose = new ArkoseSolver()
 
