@@ -545,7 +545,7 @@ class RequestAPI {
 
 		const body = JSON.stringify({
 			id: requestID,
-			data: payload,
+			data_bulk: payload,
 			raw: raw_body,
 			data_raw: raw_body_str
 		})
