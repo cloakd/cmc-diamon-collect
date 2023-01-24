@@ -4,6 +4,7 @@ class BackgroundRequest {
 	lastCompletedReqID = ""
 
 	activeRequest = null
+	bulkRequestIdx = 0
 
 	//Buffer for running bulk purchases
 	bulkRequests = []
@@ -13,11 +14,14 @@ class BackgroundRequest {
 	//Tab to use
 	tab
 
+	//Uses localhost flow (no signing)
+	debug = true
+
 	pollTime = 400
 	// pollTime = 1000
 
-	// baseURI = "http://localhost:8090"
-	baseURI = "https://mkt-resp.agg.alphabatem.com"
+	baseURI = "http://localhost:8090"
+	// baseURI = "https://mkt-resp.agg.alphabatem.com"
 
 	arkose = new ArkoseSolver()
 
@@ -56,8 +60,9 @@ class BackgroundRequest {
 		console.log("New Request: ", lastReq)
 		// console.log("Sending to Tab:", this.tab.id)
 		this.activeRequest = lastReq
+		this.bulkRequestIdx = 0
 
-		if (this.baseURI.indexOf("localhost") > 0)
+		if (this.baseURI.indexOf("localhost") > 0 && !this.debug)
 			this.sendClickBuyNowCommand()
 		else
 			this.sendLoginCommand() //Login as user and obtain message to sign
@@ -78,9 +83,15 @@ class BackgroundRequest {
 			return true //No longer useful
 
 		//We have all our requests
-		if (this.activeRequest.is_bulk && this.bulkRequests.length !== this.activeRequest.requests.length) {
+		if (this.activeRequest.is_bulk) {
 			this.bulkRequests.push(data)
-			return true
+			this.bulkRequestIdx++ //Increment
+
+			if (this.bulkRequestIdx < this.activeRequest.requests.length) {
+				console.log("Requesting next buy TXN", this.bulkRequestIdx)
+				this.sendClickBuyNowCommand()
+				return true
+			}
 		}
 
 		this.lastCompletedReqID = this.activeRequest.id; //Set as last active
@@ -229,17 +240,26 @@ class BackgroundRequest {
 		console.log("New Message", request)
 
 		if (request.method === "signMessage") {
+			if (this.activeRequest.isSignedIn) {
+				console.log("Already signed in")
+				return false //Already signed in
+			}
 
 			this.requestMon.sendSignatureExchange(this.activeRequest.id, request.data).then((r) => {
 				console.log("SigExchange raw", r)
 				r.json().then(j => {
 					console.log("Signature exchange response", j)
+					this.activeRequest.isSignedIn = true
 					sendResponse(j.signature)
 				}).then(() => {
 					setTimeout(() => {
 						console.log("Sending click buy now")
 						this.sendClickBuyNowCommand()
 					}, 1000)
+				}).catch(e => {
+					//Unable to process
+					console.error("Failed to get signature", e)
+					this.sendLogoutCommand()
 				})
 			})
 
@@ -341,13 +361,19 @@ class BackgroundRequest {
 	 * @returns {{}|{cancel: boolean}|{redirectUrl: string}}
 	 */
 	interceptBuyRequest(details) {
-		console.log("Active Request:", this.activeRequest.meta, details)
+		let request = this.activeRequest
+		if (this.activeRequest.is_bulk) {
+			// console.log("Active Request (Bulk)", this.activeRequest)
+			request = this.activeRequest.requests[this.bulkRequestIdx]
+		}
+
+		console.log(`${this.bulkRequestIdx} Active Request:`, request, details)
 		const u = new URL(details.url)
 		let params = new URLSearchParams(u.search.substring(1))
 		for (const p of params) {
 			const key = p[0]
-			if (this.activeRequest.meta[key])
-				params.set(p[0], this.activeRequest.meta[key])
+			if (request.meta[key])
+				params.set(p[0], request.meta[key])
 		}
 		return details.url.split("?")[0] + `?` + params.toString()
 	}
@@ -507,12 +533,22 @@ class RequestAPI {
 		}
 
 		const payload = [];
+		const raw_body = [];
+
 		for (let i = 0; i < data.length; i++) {
-			const js = JSON.parse(data.body)
+			raw_body.push(data[i].body)
+			const js = JSON.parse(data[i].body)
 			payload.push(js.txSigned)
 		}
+		let raw_body_str = `[${raw_body.join(",")}]`
+		console.log("sendResponseBulk:2", JSON.parse(raw_body_str))
 
-		console.log("sendResponseBulk:2", payload)
+		const body = JSON.stringify({
+			id: requestID,
+			data: payload,
+			raw: raw_body,
+			data_raw: raw_body_str
+		})
 
 		return fetch(`${this.baseURI}/response`, {
 			method: "POST",
@@ -520,10 +556,7 @@ class RequestAPI {
 				'Accept': 'application/json',
 				'Content-Type': 'application/json'
 			},
-			body: JSON.stringify({
-				id: requestID,
-				data: payload
-			})
+			body: body
 		}).catch(e => {
 			//
 		})

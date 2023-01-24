@@ -63,6 +63,7 @@ class RemoteSolanaWallet {
 	}
 
 	waitConnected(cb) {
+		console.log("RemoteWallet:waitConnected - Waiting for new request")
 		const t = setTimeout(() => {
 			if (!this.connected())
 				return

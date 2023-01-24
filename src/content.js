@@ -24,8 +24,6 @@
 	}, 1000)
 
 
-
-
 	chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 		console.log("content::onMessageListener", request)
 		onBackgroundMessage(request)
@@ -35,7 +33,6 @@
 
 	function onBackgroundMessage(request) {
 		console.log("CS From BG: ", request)
-
 		switch (request.type) {
 			case "buy_now":
 				checkRoyaltySetting()
@@ -51,7 +48,10 @@
 
 				setTimeout(() => {
 					//Configure wallet details
-					configureWallet(request.data.meta.buyer)
+					if (request.data.is_bulk)
+						configureWallet(request.data.requests[0].meta.buyer)
+					else
+						configureWallet(request.data.meta.buyer)
 
 					//Click connect
 					clickConnectWalletButton() //TODO We may not need this if connect always triggers msg sign
@@ -164,9 +164,7 @@
 			console.log("Clicking Sign out")
 			btn.click()
 			localStorage.clear()
-			localStorage.configureWalletEnvironment()
-		} else {
-			attempts = 0
+			configureWalletEnvironment()
 		}
 	}
 
@@ -263,18 +261,20 @@
 })();
 
 function configureWallet(walletAddr) {
-	console.log("Configuring wallet")
-	configureWalletEnvironment()
+	console.log("Configuring wallet", walletAddr)
 
 	window.postMessage({type: "change_wallet", payload: walletAddr})
 	// window.phantom.solana.changeAccountTo(walletAddr)
 }
 
 function configureWalletEnvironment() {
+	console.log("Configuring wallet environment")
 	localStorage.setItem("walletName", `"Phantom"`)
 	localStorage.setItem("last-connected-wallet", `"Phantom"`)
 	localStorage.setItem("blockchain-preference", `"solana"`)
 }
+
+configureWalletEnvironment()
 
 function checkRoyaltySetting() {
 	let pctData = JSON.parse(localStorage.getItem("royaltyPercentage"))
