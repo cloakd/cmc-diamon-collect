@@ -145,9 +145,10 @@ class RemoteSolanaWallet {
 	signTransaction(t) {
 		console.log("FAKER signTransaction", t)
 		setTimeout(() => {
+			console.log("FAKER signTransaction -- Clearing post txn")
 			localStorage.clear()
 			// window.location.reload()
-		}, 600)
+		}, 1200)
 		return new Promise((ok, err) => {
 			err()
 		})

@@ -31,15 +31,15 @@ class BackgroundRequest {
 		chrome.webRequest.onBeforeRequest.addListener((d) => this.onBeforeRequest(d), {urls: ["https://*.magiceden.io/*"]}, ["blocking"])
 		chrome.webRequest.onBeforeSendHeaders.addListener((d) => this.onBeforeHeaders(d), {urls: ["https://*.magiceden.io/*"]}, ["blocking", "requestHeaders", "extraHeaders"])
 		chrome.webRequest.onBeforeRequest.addListener((d) => this.onBeforeArkoseRequest(d), {urls: ["https://*.arkoselabs.com/*"]}, ["blocking"])
-		chrome.webRequest.onBeforeRequest.addListener((d) => this.onBeforeRequestMediaBlock(d), {urls: ["https://nftstorage.link/*", "https://img-cdn.magiceden.dev/*", "https://*.arweave.net/*", "https://*.ipfs.nftstorage.link/*", "https://ipfs.io/*", "https://shdw-drive.genesysgo.net/*", "https://img-cdn.magiceden.dev/*"]}, ["blocking"])
+		chrome.webRequest.onBeforeRequest.addListener((d) => this.onBeforeRequestMediaBlock(d), {urls: ["https://nftstorage.link/*", "https://img-cdn.magiceden.dev/*", "https://*.arweave.net/*", "https://*.ipfs.nftstorage.link/*", "https://ipfs.io/*", "https://shdw-drive.genesysgo.net/*", "https://img-cdn.magiceden.dev/*", "https://*.intercom.io/*", "wss://*.intercom.io/*", "https://*.intercomcdn.com/*", "https://*.stripe.com/*", "https://*.stripe.network/*"]}, ["blocking"])
 
 		//Listen on returning message
 		chrome.debugger.onEvent.addListener((d, m, p) => this.onEvent(d, m, p))
 
 
 		//Close phantom regularly
-		setInterval(this.closePhantom, 1000)
-		setInterval(this.closeSolflare, 1000)
+		setInterval(this.closePhantom, 5000)
+		setInterval(this.closeSolflare, 5000)
 
 		//Close any misc tabs
 		setInterval(() => {
@@ -150,7 +150,8 @@ class BackgroundRequest {
 	}
 
 	clearActiveRequest() {
-		if (!this.activeRequest.is_bulk && this.baseURI.indexOf("localhost") === -1) {
+		// if (!this.activeRequest.is_bulk && this.baseURI.indexOf("localhost") === -1) {
+		if (this.baseURI.indexOf("localhost") === -1) {
 			console.log("Sending logout command")
 			this.sendLogoutCommand()
 		}
@@ -247,6 +248,12 @@ class BackgroundRequest {
 
 			this.requestMon.sendSignatureExchange(this.activeRequest.id, request.data).then((r) => {
 				console.log("SigExchange raw", r)
+				if (r.status !== 200) {
+					console.log("Empty signature response")
+					this.sendLogoutCommand()
+					return
+				}
+
 				r.json().then(j => {
 					console.log("Signature exchange response", j)
 					this.activeRequest.isSignedIn = true

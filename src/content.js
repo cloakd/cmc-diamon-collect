@@ -3,6 +3,7 @@
 
 	let arkoseActive = false
 
+	//Detect Arkose
 	setInterval(() => {
 		const iframes = document.getElementsByTagName("iframe")
 		for (let iframe of iframes) {
@@ -24,6 +25,7 @@
 	}, 1000)
 
 
+	//Listen for background messages
 	chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 		console.log("content::onMessageListener", request)
 		onBackgroundMessage(request)
@@ -31,6 +33,7 @@
 		return true
 	});
 
+	//Handle background messages
 	function onBackgroundMessage(request) {
 		console.log("CS From BG: ", request)
 		switch (request.type) {
@@ -38,9 +41,17 @@
 				checkRoyaltySetting()
 				clickBuyButton()
 				break
+			case "buy_quick": //TODO Quick buy first item on collection page
+				checkRoyaltySetting()
+				clickBuyQuickButton()
+				break
+			case "sell_pool": //TODO Quick buy first item on collection page
+				checkRoyaltySetting()
+				clickSellPoolButton()
+				break
 			case "logout":
 				clickSignOutButton()
-				window.location.reload()
+				reset()
 				break
 			case "login":
 				//Sign out of any old account
@@ -59,7 +70,7 @@
 
 					//Click sign in & then sign message once it pops up
 					setTimeout(() => {
-						clickSignInButton()
+						// clickSignInButton()
 						setTimeout(() => clickSignMessageButton(), 1000)
 					}, 800)
 				}, 800)
@@ -69,8 +80,8 @@
 		}
 	}
 
-	let attempts = 0;
 
+	//Trigger arkose solver flow
 	function onArkoseActive() {
 		chrome.runtime.sendMessage({
 			type: "captcha", options: {
@@ -85,7 +96,6 @@
 		for (let i = 0; i < btns.length; i++) {
 			if (btns[i].innerHTML.toLowerCase() === text.toLowerCase() && !btns[i].disabled) {
 				console.log(`${tag} found`, btns[i])
-				attempts = 0
 				btn = btns[i]
 				break
 			}
@@ -107,7 +117,6 @@
 		for (let i = 0; i < imgs.length; i++) {
 			const alt = imgs[i].getAttribute('alt') || '';
 			if (alt.toLowerCase() === altText.toLowerCase() && imgs[i].width === width && imgs[i].height === height) {
-				attempts = 0
 				img = imgs[i]
 				break
 			}
@@ -115,138 +124,169 @@
 		return img
 	}
 
-	function clickConnectWalletButton() {
-		if (arkoseActive)
-			return; //Arkose challenge active
 
-		if (attempts > 20) {
-			console.error("Unable to find buy button")
-			window.location.reload()
+	function _repeatAttempt(attempts = 0, callback) {
+		if (arkoseActive) {
+			console.warn("_repeatAttempt Arkose active, stopping attempts")
+			return; //Arkose challenge active
+		}
+
+		if (attempts > 5) {
+			onFailed("Unable to find button")
 			return;
 		}
 
 		attempts++
-		let btn = _findButton("connect wallet")
-
-		if (btn !== null) {
-			console.log("Clicking connect wallet")
-			btn.click()
-		} else {
-			attempts = 0
-		}
-	}
-
-	function clickSignInButton(attempts = 0) {
-		if (arkoseActive)
-			return
-
-		if (attempts > 5)
-			return null
-
-		let btn = _findButton("sign in")
-		if (!btn) {
-			attempts++
-			setTimeout(() => clickSignInButton(attempts), 200)
-			return
-		}
-
-		console.log("Clicking Sign In", btn)
-		btn.click()
+		console.warn("_repeatAttempt Attempt: ", attempts)
+		if (!callback())
+			setTimeout(() => _repeatAttempt(attempts, callback), 400)
 	}
 
 	function clickSignOutButton() {
-		if (arkoseActive)
+		if (arkoseActive) {
+			console.warn("Arkose active, skipping sign out")
 			return
+		}
 
 		let btn = _findSpan("sign out")
 		console.log("Sign out button", btn)
 		if (btn !== null) {
 			console.log("Clicking Sign out")
 			btn.click()
-			localStorage.clear()
-			configureWalletEnvironment()
 		}
+
+		// localStorage.clear()
+		configureWalletEnvironment()
+	}
+
+	function clickConnectWalletButton() {
+		_repeatAttempt(0, () => {
+			let btn = _findButton("connect wallet")
+			if (!btn) {
+				console.log("clickConnectWalletButton - Cant find Connect Waller")
+				return false
+			}
+
+			console.log("Clicking connect wallet")
+			btn.click()
+			return true
+		})
+	}
+
+	function clickSignInButton() {
+		_repeatAttempt(0, () => {
+			let btn = _findButton("sign in")
+			if (!btn) {
+				console.log("clickSignInButton - Cant find Sign In")
+				return false
+			}
+
+			console.log("Clicking Sign In", btn)
+			btn.click()
+			return true
+		})
 	}
 
 	function clickSignMessageButton() {
-		if (arkoseActive)
-			return
+		_repeatAttempt(0, () => {
+			let btn = _findButton("verify wallet")
+			if (!btn) {
+				console.log("clickSignMessageButton - Cant find Verify Wallet")
+				return false
+			}
 
-		if (attempts > 5)
-			return null
-
-		let btn = _findButton("sign message")
-		if (!btn) {
-			attempts++
-			setTimeout(() => clickSignInButton(attempts), 200)
-			return
-		}
-
-		console.log("Clicking Sign Message", btn)
-		btn.click()
+			console.log("Clicking Sign Message", btn)
+			btn.click()
+			return true
+		})
 	}
-
 
 	function clickPhantomWalletButton() {
-		if (arkoseActive)
-			return; //Arkose challenge active
+		_repeatAttempt(0, () => {
+			let btn = _findImage("Phantom icon", 32, 32)
+			if (!btn) {
+				console.log("clickPhantomWalletButton - Cant find Phantom Icon")
+				return false
+			}
 
-		let btn = _findImage("Phantom icon", 28, 28)
-
-		if (btn !== null) {
 			console.log("Clicking Phantom Wallet button")
 			btn.click()
-		} else {
-			attempts = 0
-		}
+			return true
+		})
 	}
 
-	function clickBuyButton() {
-		if (arkoseActive)
-			return; //Arkose challenge active
+	function clickBuyQuickButton() {
+		_repeatAttempt(0, () => {
+			const btn = _findButton("Quick buy")
+			if (!btn) return false
 
-		if (attempts > 20) {
-			console.error("Unable to find buy button")
-			window.location.reload()
-			return;
-		}
-
-		attempts++
-		const btns = document.getElementsByTagName("button")
-		let btn = null
-		for (let i = 0; i < btns.length; i++) {
-			if (attempts > 2 && btns[i].innerHTML.toLowerCase() === "connect wallet") {
-				console.log("Connecting wallet")
-				btns[i].click()
-				continue
-			}
-
-			if (btns[i].innerHTML.toLowerCase() === "buy now" && !btns[i].disabled) {
-				console.log("Found Button!")
-				attempts = 0
-				btn = btns[i]
-				break
-			}
-
-			if (attempts > 5 && btns[i].innerHTML.toLowerCase() === "make an offer") {
-				console.log("Item Unavailable")
-				onFailed()
-				return; //Break out
-			}
-		}
-
-		if (btn === null) {
-			setTimeout(clickBuyButton, 400)
-		} else {
-			console.log("Clicking button")
+			console.log("Clicking Buy Quick Button")
 			btn.click()
-		}
+			return true
+		})
 	}
 
-	function onFailed() {
-		console.log("onFailed")
+	function clickSellPoolButton() {
+		_repeatAttempt(0, () => {
+			const btn = _findButton("Sell now")
+			if (!btn) return false
+
+			console.log("Clicking Sell Pool Button")
+			btn.click()
+			return true
+		})
+	}
+
+	function clickBuyButton(attempts = 0) {
+		_repeatAttempt(0, () => {
+			const btns = document.getElementsByTagName("button")
+			let btn = null
+			for (let i = 0; i < btns.length; i++) {
+				if (attempts > 2 && btns[i].innerHTML.toLowerCase() === "connect wallet") {
+					console.log("Connecting wallet")
+					btns[i].click()
+					continue
+				}
+
+				if (btns[i].innerHTML.toLowerCase() === "buy now" && !btns[i].disabled) {
+					console.log("Found Button!")
+					attempts = 0
+					btn = btns[i]
+					break
+				}
+
+				if (attempts > 5 && btns[i].innerHTML.toLowerCase() === "make an offer") {
+					onFailed("Item Unavailable")
+					return true; //Break out
+				}
+
+				if (attempts > 6) {
+					onFailed("Unable to click buy")
+					return true; //Break out
+				}
+			}
+
+			if (btn === null) {
+				console.log("Unable to find buy button")
+				return false
+			} else {
+				console.log("Clicking button")
+				btn.click()
+				return true
+			}
+		})
+	}
+
+	function onFailed(msg = "") {
+		console.error("onFailed", msg)
+		reset()
 		window.location.reload()
 		// chrome.runtime.sendMessage({failed: true});
+	}
+
+	function reset() {
+		localStorage.clear()
+		// window.location.reload()
 	}
 
 	function shouldClick() {
@@ -269,9 +309,18 @@ function configureWallet(walletAddr) {
 
 function configureWalletEnvironment() {
 	console.log("Configuring wallet environment")
+	localStorage.removeItem("sa")
+	localStorage.removeItem("pwu")
+	localStorage.removeItem("user-token")
+	localStorage.removeItem("user-tokens")
+	localStorage.removeItem("browser_session_token")
+	localStorage.removeItem("browser_verification_details")
+	localStorage.removeItem("profile-local-cache")
+
 	localStorage.setItem("walletName", `"Phantom"`)
 	localStorage.setItem("last-connected-wallet", `"Phantom"`)
 	localStorage.setItem("blockchain-preference", `"solana"`)
+	localStorage.setItem("royaltyPercentage", JSON.stringify({value: 0, label: "None"}))
 }
 
 configureWalletEnvironment()
